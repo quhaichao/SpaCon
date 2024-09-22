@@ -7,11 +7,17 @@ Understanding brain organization requires integrating spatial transcriptomics an
 # Software dependencies
 
 torch
+
 torch-geometric
+
 scanpy
+
 anndata
+
 seaborn
+
 rpy2
+
 R
 
 # Raw data
