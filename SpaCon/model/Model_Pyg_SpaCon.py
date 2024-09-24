@@ -253,9 +253,8 @@ class GATConv(MessagePassing):
 
 '''GATE PyG Encapsulation implementation'''
 class GATE_Encoder_3Layers(nn.Module):
-    def __init__(self, hidden_dims, mode='train'):
+    def __init__(self, hidden_dims):
         super(GATE_Encoder_3Layers, self).__init__()
-        self.mode = mode
         # encoder
         self.conv1 = GATConv(hidden_dims[0], hidden_dims[1], heads=1, concat=False,
                              dropout=0.1, add_self_loops=False, bias=False)
@@ -268,17 +267,12 @@ class GATE_Encoder_3Layers(nn.Module):
         self.bn3 = BatchNorm(hidden_dims[3])
 
     def forward(self, features, edge_index):
-        # h1 = F.elu(self.conv1(features, edge_index, attention=True))  # 2698*512    default attention==True
-        # h2 = F.elu(self.conv2(h1, edge_index, attention=True))  # 2698*60
-        # h3 = self.conv3(h2, edge_index, attention=True)
-        # return h1, h2, h3
-        h1 = F.elu(self.bn1(self.conv1(features, edge_index)))  # 2698*512    default attention==True
-        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))  # 2698*60
+        h1 = F.elu(self.bn1(self.conv1(features, edge_index))) 
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
         h3 = self.bn3(self.conv3(h2, edge_index))
-        if self.mode == 'train':
-            return h1, h2, h3
-        elif self.mode == 'explain':
-            return h3
+        return h3
+
+    
 
 class GATE_Decoder_3Layers(nn.Module):
     def __init__(self,hidden_dims):
@@ -294,50 +288,19 @@ class GATE_Decoder_3Layers(nn.Module):
                               dropout=0.1, add_self_loops=False, bias=False)
         self.bn1_ = BatchNorm(hidden_dims[0])
 
-    def forward(self, h1, h2, h3, edge_index, conv3, conv2, conv1):
-        self.conv3_.lin_src.data = conv3.lin_src.transpose(0, 1)  # src: source  512*30 -> 30*512
-        self.conv3_.lin_dst.data = conv3.lin_dst.transpose(0, 1)  # dst: destination  512*30 -> 30*512
-        self.conv2_.lin_src.data = conv2.lin_src.transpose(0, 1)  # src: source  512*30 -> 30*512
-        self.conv2_.lin_dst.data = conv2.lin_dst.transpose(0, 1)  # dst: destination  512*30 -> 30*512
-        self.conv1_.lin_src.data = conv1.lin_src.transpose(0, 1)  # src: source  3000*512 -> 512*3000
-        self.conv1_.lin_dst.data = conv1.lin_dst.transpose(0, 1)  # dst: destination  3000*512 -> 512*3000
-        # h3 = F.elu(self.conv3(h2, edge_index, attention=True, tied_attention=self.conv1.attentions))  # 2698*512
-        h3_ = F.elu(self.bn3_(self.conv3_(h3, edge_index, attention=True, tied_attention=conv3.attentions)))
-        h2_ = F.elu(self.bn2_(self.conv2_(h3_+h2, edge_index, attention=True, tied_attention=conv2.attentions)))
-        # h4 = self.conv4(h3, edge_index, attention=False)  # 2698*3000
-        h1_ = self.bn1_(self.conv1_(h2_+h1, edge_index, attention=True, tied_attention=conv1.attentions))  # 2698*3000
-        # print(conv1.attentions)
+    def forward(self, h3, edge_index):
+        h3_ = F.elu(self.bn3_(self.conv3_(h3, edge_index)))
+        h2_ = F.elu(self.bn2_(self.conv2_(h3_, edge_index)))
+        h1_ = self.bn1_(self.conv1_(h2_, edge_index))
         return h1_
     
 
-class GATE_Decoder_3Layers_Init(nn.Module):
-    def __init__(self,hidden_dims):
-        super(GATE_Decoder_3Layers_Init, self).__init__()
-        # decoder
-        self.conv3_ = GATConv(hidden_dims[3], hidden_dims[2], heads=1, concat=False,
-                              dropout=0.1, add_self_loops=False, bias=False)
-        self.bn3_ = BatchNorm(hidden_dims[2])
-        self.conv2_ = GATConv(hidden_dims[2], hidden_dims[1], heads=1, concat=False,
-                              dropout=0.1, add_self_loops=False, bias=False)
-        self.bn2_ = BatchNorm(hidden_dims[1])
-        self.conv1_ = GATConv(hidden_dims[1], hidden_dims[0], heads=1, concat=False,
-                              dropout=0.1, add_self_loops=False, bias=False)
-        self.bn1_ = BatchNorm(hidden_dims[0])
 
-    def forward(self, h1, h2, h3, edge_index):
-        h3_ = F.elu(self.bn3_(self.conv3_(h3, edge_index)))
-        # h2_ = F.elu(self.bn2_(self.conv2_(h3_+h2, edge_index)))
-        # h1_ = self.bn1_(self.conv1_(h2_+h1, edge_index))  # 2698*3000
-        h2_ = F.elu(self.bn2_(self.conv2_(h3_, edge_index)))
-        h1_ = self.bn1_(self.conv1_(h2_, edge_index))  # 2698*3000
-        return h1_
-
-
-class GATE_2Encoder(torch.nn.Module):
+class SpaCon(torch.nn.Module):
     def __init__(self, hidden_dims, fusion_method='concat'):
-        super(GATE_2Encoder, self).__init__()
+        super(SpaCon, self).__init__()
 
-        # [in_dim, num_hidden, out_dim] = hidden_dims
+        # fusion_method = 'concat' or 'add'
         self.fusion_method = fusion_method
         # Encoder
         self.encoder_spa = GATE_Encoder_3Layers(hidden_dims)
@@ -346,22 +309,25 @@ class GATE_2Encoder(torch.nn.Module):
         # Decoder
         if fusion_method == 'concat':
             self.decoder = GATE_Decoder_3Layers(hidden_dims[:-1] + [2*hidden_dims[-1]])
-        else:
+        elif self.fusion_method == 'add':
             self.decoder = GATE_Decoder_3Layers(hidden_dims)
 
-    def forward(self, features, edge_index_con, edge_index_spa):  # feature:2698*3000, edge_index:2*32210
+    def forward(self, features, edge_index_con, edge_index_spa): 
         # Connect Encoder
-        h1_con, h2_con, h3_con = self.encoder_con(features, edge_index_con)
+        h3_con = self.encoder_con(features, edge_index_con)
         # Spatial Encoder
-        h1_spa, h2_spa, h3_spa = self.encoder_spa(features, edge_index_spa)
+        h3_spa = self.encoder_spa(features, edge_index_spa)
         # Features Fusion
         if self.fusion_method == 'concat':
             encode_features = torch.cat((h3_con, h3_spa), dim=1)
         elif self.fusion_method == 'add':
-            encode_features = h3_con + h3_spa
+            h3_con_norm = torch.nn.functional.normalize(h3_con, p=2, dim=1)
+            h3_spa_norm = torch.nn.functional.normalize(h3_spa, p=2, dim=1)
+            encode_features = h3_con_norm + h3_spa_norm
         # Decoder
-        features_hat = self.decoder(h1_con+h1_spa, h2_con+h2_spa, encode_features, edge_index_con, self.encoder_con.conv3, self.encoder_con.conv2, self.encoder_con.conv1)
-        return h3_con, h3_spa, encode_features, features_hat  # F.log_softmax(x, dim=-1)
+        features_hat = self.decoder(encode_features, edge_index_con)
+        return h3_con, h3_spa, features_hat
+    
 
     @torch.no_grad()
     def spa_inference(self, x_all, subgraph_loader,
@@ -433,179 +399,5 @@ class GATE_2Encoder(torch.nn.Module):
         pbar.close()
         return x_all
     
-
-
-class GATE_2Encoder_Decoder_Init(torch.nn.Module):
-    def __init__(self, hidden_dims, fusion_method='concat', mode='train'):
-        super(GATE_2Encoder_Decoder_Init, self).__init__()
-
-        # [in_dim, num_hidden, out_dim] = hidden_dims
-        self.fusion_method = fusion_method
-        # Encoder
-        self.encoder_spa = GATE_Encoder_3Layers(hidden_dims, mode)
-
-        self.encoder_con = GATE_Encoder_3Layers(hidden_dims, mode)
-        # Decoder
-        if fusion_method == 'concat':
-            self.decoder = GATE_Decoder_3Layers_Init(hidden_dims[:-1] + [2*hidden_dims[-1]])
-        else:
-            self.decoder = GATE_Decoder_3Layers_Init(hidden_dims)
-
-    def forward(self, features, edge_index_con, edge_index_spa):  # feature:2698*3000, edge_index:2*32210
-        # Connect Encoder
-        h1_con, h2_con, h3_con = self.encoder_con(features, edge_index_con)
-        # Spatial Encoder
-        h1_spa, h2_spa, h3_spa = self.encoder_spa(features, edge_index_spa)
-        # Features Fusion
-        if self.fusion_method == 'concat':
-            encode_features = torch.cat((h3_con, h3_spa), dim=1)
-        elif self.fusion_method == 'add':
-            encode_features = h3_con + h3_spa
-        # Decoder
-        features_hat = self.decoder(h1_con+h1_spa, h2_con+h2_spa, encode_features, edge_index_con)
-        return h3_con, h3_spa, features_hat  # F.log_softmax(x, dim=-1)
-    
-
-    @torch.no_grad()
-    def spa_inference(self, x_all, subgraph_loader,
-                  device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')):
-        pbar = tqdm(total=len(subgraph_loader.dataset) * 3)   # layers' number
-        pbar.set_description('Evaluating')
-
-        # Compute representations of nodes layer by layer, using *all*
-        # available edges. This leads to faster computation in contrast to
-        # immediately computing the final representations of each batch:
-        for i in range(3):  # layers' number
-            xs = []
-            for batch in subgraph_loader:
-                # slice the x_all use the n_id
-                x = x_all[batch.n_id.to(x_all.device)].to(device)
-                # calculate the x used by graph
-                if i == 0:
-                    x = F.elu(self.encoder_spa.bn1(self.encoder_spa.conv1(x, batch.edge_index.to(device))))
-                elif i == 1:
-                    x = F.elu(self.encoder_spa.bn2(self.encoder_spa.conv2(x, batch.edge_index.to(device))))
-                elif i == 2:
-                    x = self.encoder_spa.bn3(self.encoder_spa.conv3(x, batch.edge_index.to(device)))
-                # add the calculated node features to the list
-                # slice the feature use the batch.batch_size
-                xs.append(x[:batch.batch_size].cpu())
-                # print('x[:batch.batch_size].cpu().shape:',x[:batch.batch_size].cpu().shape)  # torch.Size([512, 30])
-                # update the bar
-                pbar.update(batch.batch_size)
-            # select the last layer output
-            # transform the [tensor,tensor,..] to a entire tensor
-            x_all = torch.cat(xs, dim=0)
-            # print('torch.tensor(xs).shape:', len(xs))
-            # print('x_all.shape:', x_all.shape)
-        pbar.close()
-        return x_all
-    
-    @torch.no_grad()    
-    def con_inference(self, x_all, subgraph_loader,
-                  device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')):
-        pbar = tqdm(total=len(subgraph_loader.dataset) * 3)   # layers' number
-        pbar.set_description('Evaluating')
-
-        # Compute representations of nodes layer by layer, using *all*
-        # available edges. This leads to faster computation in contrast to
-        # immediately computing the final representations of each batch:
-        for i in range(3):  # layers' number
-            xs = []
-            for batch in subgraph_loader:
-                # slice the x_all use the n_id
-                x = x_all[batch.n_id.to(x_all.device)].to(device)
-                # calculate the x used by graph
-                if i == 0:
-                    x = F.elu(self.encoder_con.bn1(self.encoder_con.conv1(x, batch.edge_index.to(device))))
-                elif i == 1:
-                    x = F.relu(self.encoder_con.bn2(self.encoder_con.conv2(x, batch.edge_index.to(device))))
-                elif i == 2:
-                    x = self.encoder_con.bn3(self.encoder_con.conv3(x, batch.edge_index.to(device)))
-                # add the calculated node features to the list
-                # slice the feature use the batch.batch_size
-                xs.append(x[:batch.batch_size].cpu())
-                # print('x[:batch.batch_size].cpu().shape:',x[:batch.batch_size].cpu().shape)  # torch.Size([512, 30])
-                # update the bar
-                pbar.update(batch.batch_size)
-            # select the last layer output
-            # transform the [tensor,tensor,..] to a entire tensor
-            x_all = torch.cat(xs, dim=0)
-            # print('torch.tensor(xs).shape:', len(xs))
-            # print('x_all.shape:', x_all.shape)
-        pbar.close()
-        return x_all
-    
-    # @torch.no_grad()
-    # def enc_dec_inference(self, x_all, spa_subgraph_loader, con_subgraph_loader,
-    #               device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')):
-    #     pbar = tqdm(total=len(spa_subgraph_loader.dataset) * 3)   # layers' number
-    #     pbar.set_description('Evaluating')
-    #     spa_x_all = x_all
-    #     con_x_all = x_all
-
-    #     # Compute representations of nodes layer by layer, using *all*
-    #     # available edges. This leads to faster computation in contrast to
-    #     # immediately computing the final representations of each batch:
-    #     for i in range(3):  # layers' number
-    #         spa_xs = []
-    #         con_xs = []
-    #         for spa_batch, con_batch in zip(spa_subgraph_loader, con_subgraph_loader):
-    #             # slice the x_all use the n_id
-    #             spa_x = spa_x_all[spa_batch.n_id.to(spa_x_all.device)].to(device)
-    #             con_x = con_x_all[con_batch.n_id.to(con_x_all.device)].to(device)
-    #             # calculate the x used by graph
-    #             if i == 0:
-    #                 spa_x = F.elu(self.encoder_spa.bn1(self.encoder_spa.conv1(spa_x, spa_batch.edge_index.to(device))))
-    #                 con_x = F.elu(self.encoder_con.bn1(self.encoder_con.conv1(con_x, con_batch.edge_index.to(device))))
-    #             elif i == 1:
-    #                 spa_x = F.elu(self.encoder_spa.bn2(self.encoder_spa.conv2(spa_x, spa_batch.edge_index.to(device))))
-    #                 con_x = F.elu(self.encoder_con.bn2(self.encoder_con.conv2(con_x, con_batch.edge_index.to(device))))
-    #             elif i == 2:
-    #                 spa_x = self.encoder_spa.bn3(self.encoder_spa.conv3(spa_x, spa_batch.edge_index.to(device)))
-    #                 con_x = self.encoder_con.bn3(self.encoder_con.conv3(con_x, con_batch.edge_index.to(device)))
-    #             # add the calculated node features to the list
-    #             # slice the feature use the batch.batch_size
-    #             spa_xs.append(spa_x[:spa_batch.batch_size].cpu())
-    #             con_xs.append(con_x[:con_batch.batch_size].cpu())
-    #             # print('x[:batch.batch_size].cpu().shape:',x[:batch.batch_size].cpu().shape)  # torch.Size([512, 30])
-    #             # update the bar
-    #             pbar.update(spa_batch.batch_size)
-    #         # select the last layer output
-    #         # transform the [tensor,tensor,..] to a entire tensor
-    #         spa_x_all = torch.cat(spa_xs, dim=0)
-    #         con_x_all = torch.cat(con_xs, dim=0)
-    #         # print('torch.tensor(xs).shape:', len(xs))
-    #         # print('x_all.shape:', x_all.shape)
-    #     pbar.close()
-
-    #     # Decoder 
-    #     x_all_dec = x_all
-    #     for i in range(3):  # layers' number
-    #         xs = []
-    #         for batch in subgraph_loader:
-    #             # slice the x_all use the n_id
-    #             x = x_all_dec[batch.n_id.to(x_all_dec.device)].to(device)
-    #             # calculate the x used by graph
-    #             if i == 0:
-    #                 # x = F.elu(self.encoder.conv1(x, batch.edge_index.to(device)))
-    #                 x = F.elu(self.decoder.conv3_(x, batch.edge_index.to(device)))
-    #             elif i == 1:
-    #                 # x = F.relu(self.encoder.conv2(x, batch.edge_index.to(device)))
-    #                 x = F.elu(self.decoder.conv2_(x, batch.edge_index.to(device)))
-    #             elif i == 2:
-    #                 # x = self.encoder.conv3(x, batch.edge_index.to(device))
-    #                 x = self.decoder.conv1_(x, batch.edge_index.to(device))
-    #             # add the calculated node features to the list
-    #             # slice the feature use the batch.batch_size
-    #             xs.append(x[:batch.batch_size].cpu())
-    #             # update the bar
-    #             # pbar.update(batch.batch_size)
-    #         # select the last layer output
-    #         # transform the [tensor,tensor,..] to a entire tensor
-    #         x_all_dec = torch.cat(xs, dim=0)
-            
-    #     # pbar.close()
-    #     return spa_x_all, con_x_all
 
 
