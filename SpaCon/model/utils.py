@@ -125,7 +125,8 @@ def update_adjacency_matrix(G, temp_adata, indices):
                 G[temp_adata.obs.index[i], temp_adata.obs.index[neighbor]] = 1
 
 
-def build_spatial_graph(adata, rad_cutoff=None, k_cutoff=None, model='Radius', sec_x='x', sec_y='y', is_3d=False,
+
+def build_spatial_graph(adata, rad_cutoff=None, k_cutoff=None, model='Radius', sec_x='x', sec_y='y', is_3d=True,
                            rad_cutoff_Zaxis=None, key_section=None, section_order=None):
     """\
     Construct the spatial neighbor networks and convert them to PyTorch Geometric format.
@@ -159,11 +160,11 @@ def build_spatial_graph(adata, rad_cutoff=None, k_cutoff=None, model='Radius', s
     adata.obs.index = range(adata.n_obs)
 
     # Create an empty adjacency matrix
-    G = sp.coo_matrix((np.zeros((adata.n_obs, adata.n_obs))), dtype=int)
+    G = sp.lil_matrix((adata.n_obs, adata.n_obs))
 
     if is_3d:
         # Loop through each section to find neighbors within the section
-        for section in np.unique(adata.obs[key_section]):
+        for section in tqdm(np.unique(adata.obs[key_section])):
             temp_adata = adata[adata.obs[key_section] == section]
             coor = pd.DataFrame({'x': temp_adata.obs[sec_x], 'y': temp_adata.obs[sec_y]})
 
@@ -174,7 +175,7 @@ def build_spatial_graph(adata, rad_cutoff=None, k_cutoff=None, model='Radius', s
             update_adjacency_matrix(G, temp_adata, indices)
 
         # Loop through adjacent sections to find inter-section neighbors
-        for it in range(len(section_order) - 1):
+        for it in tqdm(range(len(section_order) - 1)):
             section_1 = section_order[it]
             section_2 = section_order[it + 1]
             temp_adata = adata[adata.obs[key_section].isin([section_1, section_2])]
@@ -200,6 +201,7 @@ def build_spatial_graph(adata, rad_cutoff=None, k_cutoff=None, model='Radius', s
 
     # Add self-loops
     G = G + sp.eye(G.shape[0])  # Add self-loops
+    G = G.tocoo()
 
     # Convert to PyTorch Geometric Data
     edge_index = torch.LongTensor(np.array([G.row, G.col]))  # Convert COO format to edge_index
@@ -207,36 +209,25 @@ def build_spatial_graph(adata, rad_cutoff=None, k_cutoff=None, model='Radius', s
 
     data = Data(edge_index=edge_index, x=x)
 
-    return data, G
+    return data, G.tocsr()
 
 
 
 
 '''transfer NTdata and STdata to the pyg data'''
-def Transfer_pytorch_NT_Data(adata, copy=False):
-    # copy the adata to process
-    if copy:
-        G = adata.uns['Spatial_Net'].copy()
-    else:
-        G = adata.uns['Spatial_Net']
-    # tran the adj matrix to 0-1 matrix
-    G[G > 0] = 1
-    # G = G + I
-    # G = G + np.eye(G.shape[0])
-    for i in range(G.shape[0]):
-        G[i, i] = 1
-    # tran numpy to scipy sparse
-    # G = sp.csr_matrix(G)
-    # print('The proportion of the NT adj matrix is: ',np.nonzero(G)[0].shape[0]/(G.shape[0]**2))
+def build_connection_graph(adata, adj, threshold=0.001):
+    adj[adj < threshold] = 0
+    adj[adj > 0] = 1
+    for i in range(adj.shape[0]):
+        adj[i, i] = 1
 
-    # trans the adjacent matrix(G) to PYG data
-    edgeList = np.argwhere(G)
-    if type(adata.X) == np.ndarray:
-        data = Data(edge_index=torch.LongTensor(edgeList.T), x=torch.FloatTensor(adata.X))  # .todense()
-    else:
-        data = Data(edge_index=torch.LongTensor(edgeList.T), x=torch.FloatTensor(adata.X.todense()))  # .todense()
+    # Convert to PyTorch Geometric Data
+    edgeList = np.argwhere(adj)
+    edge_index = torch.LongTensor(edgeList.T)
+    x = torch.FloatTensor(adata.X.todense() if sp.issparse(adata.X) else adata.X)
+
+    data = Data(edge_index=edge_index, x=x)
     return data
-
 
 
 
