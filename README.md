@@ -16,7 +16,7 @@ The brain’s structure and function arise from its complex molecular compositio
 * scanpy==1.8.2
 * anndata==0.9.1
 * pandas==1.5.3
-* rpy22==3.5.12
+* rpy2==3.5.12
 * scipy==1.10.1
 
 
