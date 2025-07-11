@@ -31,4 +31,4 @@ The brain’s structure and function arise from its complex molecular compositio
 ## Raw data
  The raw data used in this study can be accessed as follows: MERFISH dataset of mouse brain is available at https://alleninstitute.github.io/abc_atlas_access/descriptions/Zhuang_dataset.html. Slide-seq dataset of mouse brain is available at https://www.braincelldata.org/. Stereo-seq dataset of mouse brain is available at https://doi.org/10.12412/BSDC.1699433096.20001. Allen structural connectivity data is available at https://connectivity.brain-map.org. MERFISH cell segmentation and decoded results of mouse brain data is available at https://download.brainimagelibrary.org/29/3c/293cc39ceea87f6d/processed_data/.
 
- Our processed data can be found in the tutorial above
+ Our processed data can be found in the tutorial above.
