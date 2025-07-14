@@ -21,7 +21,7 @@ The brain’s structure and function arise from its complex molecular compositio
 
 
 
-## tutorials
+## Tutorials
 
  * Source code to reproduce the main results of this article is available at https://spacon-results-reproduction.readthedocs.io/en/latest/.
  * The step-by-step tutorial of SpaCon is available at https://spacon-tutorials.readthedocs.io/en/latest/
