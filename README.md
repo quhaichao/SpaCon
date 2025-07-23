@@ -21,6 +21,58 @@ The brain’s structure and function arise from its complex molecular compositio
 
 
 
+## Installation
+
+You can easily install SpaCon using pip:
+
+```bash
+pip install spacon
+```
+
+**Recommended:** To avoid dependency conflicts, it is best to install SpaCon in a fresh or isolated Python environment. Here are two common ways to create an isolated environment:
+
+### Using `conda` (recommended for most users)
+
+1. Create a new environment (e.g., named `spacon-env`) with Python 3.8 or above:
+    ```bash
+    conda create -n spacon-env python=3.9
+    ```
+2. Activate the environment:
+    ```bash
+    conda activate spacon-env
+    ```
+3. Install SpaCon:
+    ```bash
+    pip install spacon
+    ```
+
+### Using `virtualenv`
+
+1. Install virtualenv if you don't have it:
+    ```bash
+    pip install virtualenv
+    ```
+2. Create a new environment:
+    ```bash
+    virtualenv spacon-env
+    ```
+3. Activate the environment (Windows):
+    ```bash
+    .\spacon-env\Scripts\activate
+    ```
+   Or (Linux/Mac):
+    ```bash
+    source spacon-env/bin/activate
+    ```
+4. Install SpaCon:
+    ```bash
+    pip install spacon
+    ```
+
+After installation, you can start using SpaCon in your projects. For more details and tutorials, please refer to the [SpaCon documentation](https://spacon-tutorials.readthedocs.io/en/latest/)
+
+
+
 ## Tutorials
 
  * Source code to reproduce the main results of this article is available at https://spacon-results-reproduction.readthedocs.io/en/latest/.
