@@ -1,4 +1,3 @@
-# GATE
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,7 +6,6 @@ import torch.nn as nn
 # cudnn.benchmark = True
 import torch.nn.functional as F
 
-# GAT_conv
 from typing import Union, Tuple, Optional
 from torch_geometric.typing import (OptPairTensor, Adj, Size, NoneType,
                                     OptTensor)
@@ -250,11 +248,10 @@ class GATConv(MessagePassing):
                                              self.out_channels, self.heads)
 
 
-
-'''GATE PyG Encapsulation implementation'''
 class GATE_Encoder_3Layers(nn.Module):
     def __init__(self, hidden_dims):
         super(GATE_Encoder_3Layers, self).__init__()
+        assert len(hidden_dims) == 4, "hidden_dims should have 4 dimensions"
         # encoder
         self.conv1 = GATConv(hidden_dims[0], hidden_dims[1], heads=1, concat=False,
                              dropout=0.1, add_self_loops=False, bias=False)
@@ -266,16 +263,17 @@ class GATE_Encoder_3Layers(nn.Module):
                              dropout=0.1, add_self_loops=False, bias=False)
         self.bn3 = BatchNorm(hidden_dims[3])
 
+
     def forward(self, features, edge_index):
         h1 = F.elu(self.bn1(self.conv1(features, edge_index))) 
         h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
         h3 = self.bn3(self.conv3(h2, edge_index))
-        return h3
+        return h1, h2, h3
 
     
 
 class GATE_Decoder_3Layers(nn.Module):
-    def __init__(self,hidden_dims):
+    def __init__(self, hidden_dims):
         super(GATE_Decoder_3Layers, self).__init__()
         # decoder
         self.conv3_ = GATConv(hidden_dims[3], hidden_dims[2], heads=1, concat=False,
@@ -288,10 +286,14 @@ class GATE_Decoder_3Layers(nn.Module):
                               dropout=0.1, add_self_loops=False, bias=False)
         self.bn1_ = BatchNorm(hidden_dims[0])
 
-    def forward(self, h3, edge_index):
+    def forward(self, h1, h2, h3, edge_index):
         h3_ = F.elu(self.bn3_(self.conv3_(h3, edge_index)))
-        h2_ = F.elu(self.bn2_(self.conv2_(h3_, edge_index)))
-        h1_ = self.bn1_(self.conv1_(h2_, edge_index))
+
+        h2_fused = h3_ + h2
+        h2_ = F.elu(self.bn2_(self.conv2_(h2_fused, edge_index)))
+
+        h1_fused = h2_ + h1
+        h1_ = self.bn1_(self.conv1_(h1_fused, edge_index))
         return h1_
     
 
@@ -300,6 +302,9 @@ class SpaCon(torch.nn.Module):
     def __init__(self, hidden_dims, fusion_method='concat'):
         super(SpaCon, self).__init__()
 
+        assert fusion_method in ['concat', 'add'], f"Unsupported fusion_method: '{fusion_method}'"
+        assert len(hidden_dims) == 4, "hidden_dims should have 4 dimensions"
+        
         # fusion_method = 'concat' or 'add'
         self.fusion_method = fusion_method
         # Encoder
@@ -312,11 +317,16 @@ class SpaCon(torch.nn.Module):
         elif self.fusion_method == 'add':
             self.decoder = GATE_Decoder_3Layers(hidden_dims)
 
+
     def forward(self, features, edge_index_con, edge_index_spa): 
         # Connect Encoder
-        h3_con = self.encoder_con(features, edge_index_con)
+        h1_con, h2_con, h3_con = self.encoder_con(features, edge_index_con)
         # Spatial Encoder
-        h3_spa = self.encoder_spa(features, edge_index_spa)
+        h1_spa, h2_spa, h3_spa = self.encoder_spa(features, edge_index_spa)
+
+        h1_fused = h1_con + h1_spa
+        h2_fused = h2_con + h2_spa
+
         # Features Fusion
         if self.fusion_method == 'concat':
             encode_features = torch.cat((h3_con, h3_spa), dim=1)
@@ -324,10 +334,10 @@ class SpaCon(torch.nn.Module):
             h3_con_norm = torch.nn.functional.normalize(h3_con, p=2, dim=1)
             h3_spa_norm = torch.nn.functional.normalize(h3_spa, p=2, dim=1)
             encode_features = h3_con_norm + h3_spa_norm
+
         # Decoder
-        features_hat = self.decoder(encode_features, edge_index_con)
+        features_hat = self.decoder(h1_fused, h2_fused, encode_features, edge_index_con)
         return h3_con, h3_spa, features_hat
-    
 
     @torch.no_grad()
     def spa_inference(self, x_all, subgraph_loader,
