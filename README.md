@@ -33,9 +33,9 @@ pip install spacon
 
 ### Using `conda` (recommended for most users)
 
-1. Create a new environment (e.g., named `spacon-env`) with Python 3.8 or above:
+1. Create a new environment (e.g., named `spacon-env`) with Python 3.9 or above:
     ```bash
-    conda create -n spacon-env python=3.9
+    conda create -n spacon-env python=3.10
     ```
 2. Activate the environment:
     ```bash
