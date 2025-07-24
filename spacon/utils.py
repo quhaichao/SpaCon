@@ -364,11 +364,11 @@ def result_plot_3D(adata, highlight_section, cluster_color):
     cells[:, 2] = -cells[:, 2]
 
     spacing_multiplier = 3
-    # Data preprocessing
+    # Preprocess data
     original_slices = np.unique(cells[:, 0])  # Get original slice positions
-    sorted_slices = np.sort(original_slices)    # Sort slice positions
+    sorted_slices = np.sort(original_slices)  # Sort slice positions
 
-    # Generate new slice positions (maintain relative order, magnify spacing)
+    # Generate new slice positions (maintain relative order, expand spacing)
     new_slice_positions = sorted_slices[0] + np.arange(len(sorted_slices)) * spacing_multiplier
 
     # Create position mapping dictionary (original coordinates -> mapped coordinates)
@@ -378,36 +378,36 @@ def result_plot_3D(adata, highlight_section, cluster_color):
     cells[:, 0] = np.vectorize(position_map.get)(cells[:, 0])
 
     # Create reverse mapping dictionary (mapped coordinates -> original coordinates)
-    reverse_position_map = {new: old for new, old in position_map.items()}
+    reverse_position_map = {new: old for old, new in position_map.items()}
 
-    # Define slices to highlight (based on original coordinates) and offsets
+    # Define slices to be highlighted (based on original coordinates) and offset values
     highlight_section_x = adata[adata.obs['section'] == highlight_section].obs['x_section_mean'].unique()
-    highlight_slices = [highlight_section_x]      # Original X coordinates of highlighted slices
-    offset_y = 40                              # Y-direction offset
-    offset_z = 40                              # Z-direction offset
+    highlight_slices = [highlight_section_x]  # Original X coordinates of highlighted slices
+    offset_y = 40  # Y direction offset
+    offset_z = 40  # Z direction offset
 
-    # ================= Visualization Phase =================
+    # ================= Visualization Stage =================
     # Create 3D canvas
     fig = plt.figure(figsize=(20, 10))
     ax = fig.add_subplot(111, projection='3d')
 
     # Visualization parameter configuration
     viz_params = {
-        'plane_alpha': 0.01,       # Plane transparency
-        'edge_width': 0.3,         # Edge line width
-        'point_size': 4,          # Cell point size
-        'point_alpha': 0.7,        # Cell point transparency
-        'line_alpha': 0.2          # Edge transparency
+        'plane_alpha': 0.01,  # Plane transparency
+        'edge_width': 0.3,    # Border line width
+        'point_size': 4,      # Cell point size
+        'point_alpha': 0.7,   # Cell point transparency
+        'line_alpha': 0.2     # Border transparency
     }
 
-    # Automatically calculate coordinate ranges (all planes share the same range, ignoring offset effects)
+    # Automatically calculate coordinate ranges (all planes share the same range, offset effects not considered)
     coord_ranges = [
         (cells[:, 0].min()-0.5, cells[:, 0].max()+0.5),  # X range
         (cells[:, 1].min()-5, cells[:, 1].max()+5),      # Y range
         (cells[:, 2].min()-5, cells[:, 2].max()+5)       # Z range
     ]
 
-    # Create plane template (un-offset version)
+    # Create plane template (non-offset version)
     Y0, Z0 = np.meshgrid(
         np.linspace(*coord_ranges[1], 2),
         np.linspace(*coord_ranges[2], 2)
@@ -415,20 +415,20 @@ def result_plot_3D(adata, highlight_section, cluster_color):
 
     # Draw slices layer by layer
     for x in np.unique(cells[:, 0]):
-        # Get the original X coordinate
+        # Get original X coordinate
         original_x = reverse_position_map.get(x, x)
         
-        # Determine if the current slice should be highlighted (based on original X coordinate)
+        # Determine whether to highlight current slice (based on original X coordinate)
         if original_x in highlight_slices:
             add_y, add_z = offset_y, offset_z
             x_plot = x  # Highlighted slice uses original X coordinate
         else:
             add_y, add_z = 0, 0
-            x_plot = x          # Normal slice uses mapped X coordinate
+            x_plot = x  # Regular slice uses mapped X coordinate
         
         # Generate plane data, X coordinate uniformly uses x_plot
         X_plane = np.full_like(Y0, x_plot)
-        # For highlighted slices, the plane is offset in Y and Z coordinates; no offset for other slices
+        # For highlighted slices, plane is offset in Y, Z coordinates; other slices are not offset
         Y_plane = Y0 + add_y
         Z_plane = Z0 + add_z
         
@@ -438,51 +438,42 @@ def result_plot_3D(adata, highlight_section, cluster_color):
                         alpha=viz_params['plane_alpha'],
                         linewidth=0)
         
-        # Draw plane borders, border X coordinate also uses x_plot
+        # Draw plane border, border X coordinate also uses x_plot
         border_lines = [
-            ([x_plot, x_plot],
-            [coord_ranges[1][0] + add_y, coord_ranges[1][1] + add_y],
-            [coord_ranges[2][0] + add_z, coord_ranges[2][0] + add_z]),  # Bottom edge
-            ([x_plot, x_plot],
-            [coord_ranges[1][0] + add_y, coord_ranges[1][1] + add_y],
-            [coord_ranges[2][1] + add_z, coord_ranges[2][1] + add_z]),  # Top edge
-            ([x_plot, x_plot],
-            [coord_ranges[1][0] + add_y, coord_ranges[1][0] + add_y],
-            [coord_ranges[2][0] + add_z, coord_ranges[2][1] + add_z]),  # Left edge
-            ([x_plot, x_plot],
-            [coord_ranges[1][1] + add_y, coord_ranges[1][1] + add_y],
-            [coord_ranges[2][0] + add_z, coord_ranges[2][1] + add_z])   # Right edge
+            ([x_plot, x_plot], [coord_ranges[1][0] + add_y, coord_ranges[1][1] + add_y], 
+             [coord_ranges[2][0] + add_z, coord_ranges[2][0] + add_z]),  # Bottom edge
+            ([x_plot, x_plot], [coord_ranges[1][0] + add_y, coord_ranges[1][1] + add_y], 
+             [coord_ranges[2][1] + add_z, coord_ranges[2][1] + add_z]),  # Top edge
+            ([x_plot, x_plot], [coord_ranges[1][0] + add_y, coord_ranges[1][0] + add_y], 
+             [coord_ranges[2][0] + add_z, coord_ranges[2][1] + add_z]),  # Left edge
+            ([x_plot, x_plot], [coord_ranges[1][1] + add_y, coord_ranges[1][1] + add_y], 
+             [coord_ranges[2][0] + add_z, coord_ranges[2][1] + add_z])   # Right edge
         ]
         
         for line in border_lines:
-            ax.plot(*line,
-                    color='k',
-                    linewidth=viz_params['edge_width'],
-                    alpha=viz_params['line_alpha'])
+            ax.plot(*line, color='k', linewidth=viz_params['edge_width'], alpha=viz_params['line_alpha'])
         
-        # Extract cells for the current layer
+        # Extract cells from current layer
         mask = cells[:, 0] == x
         layer_data = cells[mask]
         
-        # Convert cluster labels to integers
+        # Convert category labels to integers
         class_labels = layer_data[:, 3].astype(int)
         
         # Generate color list
         colors = [cluster_color[cls] for cls in class_labels]
         
-        # Draw cell points, for highlighted slices, X coordinate is also replaced with original coordinate, Y and Z coordinates are offset
-        ax.scatter(
-            np.full(len(layer_data), x_plot),    # Use x_plot instead of original mapped value
-            layer_data[:, 1] + add_y,            # Y coordinate offset
-            layer_data[:, 2] + add_z,            # Z coordinate offset
-            c=colors,                            # Cluster color
-            s=viz_params['point_size'],
-            alpha=viz_params['point_alpha'],
-            edgecolor='w',
-            linewidth=0.1
-        )
+        # Draw cell points, for highlighted slices, X coordinate is also replaced with original coordinate, Y, Z coordinates are offset
+        ax.scatter(np.full(len(layer_data), x_plot),  # Use x_plot instead of original mapped value
+                   layer_data[:, 1] + add_y,          # Y coordinate offset
+                   layer_data[:, 2] + add_z,          # Z coordinate offset
+                   c=colors,                          # Category colors
+                   s=viz_params['point_size'],
+                   alpha=viz_params['point_alpha'],
+                   edgecolor='w',
+                   linewidth=0.1)
 
-    # ================= Graphic Embellishments =================
+    # ================= Graph Decoration =================
     # Hide coordinate system
     ax.set_axis_off()
     ax.grid(False)
@@ -494,7 +485,7 @@ def result_plot_3D(adata, highlight_section, cluster_color):
     all_y = cells[:, 1]
     all_z = cells[:, 2]
 
-    # Set tight axis limits
+    # Set compact axis ranges
     buffer = 2  # Buffer area
     ax.set_xlim(all_x.min() - buffer, all_x.max() + buffer)
     ax.set_ylim(all_y.min() - buffer, all_y.max() + offset_y + buffer)
@@ -510,7 +501,7 @@ def result_plot_3D(adata, highlight_section, cluster_color):
 
     ax.set_box_aspect([x_range, y_range, z_range])
 
-    # Adjust plot layout to reduce whitespace
+    # Adjust figure layout to reduce whitespace
     plt.subplots_adjust(left=0.02, right=0.98, top=0.98, bottom=0.02)
     plt.tight_layout()
     plt.show()
